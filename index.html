@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hosts File Manager</title>
+  <!-- Bootstrap CSS -->
+  <link href="assets/bootstrap/bootstrap.min.css" rel="stylesheet">
+</head>
+<body data-bs-theme="dark">
+  <div class="d-flex flex-row justify-content-between align-items-center position-sticky top-0 bg-dark z-3">
+    <div>
+        <h1>Manage /etc/hosts</h1>
+    </div>
+    <div>
+        <button type="button" class="btn btn-outline-success" id="add-section" onClick="createNewSection()">Add Section</button>
+        <button type="button" class="btn btn-outline-primary" id="save-btn" onclick="saveChanges()">Save Changes</button>
+    </div>
+  </div>
+
+  <table id="hosts-table" class="table table-dark table-striped table-hover table-sm">
+    <thead>
+      <tr>
+        <th>Enabled</th>
+        <th>IP Address</th>
+        <th>Domain</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- Rows will be added dynamically -->
+    </tbody>
+  </table>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    // Load the hosts file when the window loads
+    window.onload = function() {
+      ipcRenderer.send('load-hosts-file');
+    };
+
+    ipcRenderer.on('load-hosts-file', (event, data) => {
+      const hostsTableBody = document.getElementById('hosts-table').getElementsByTagName('tbody')[0];
+      hostsTableBody.innerHTML = ''; // Clear any previous rows
+
+      const lines = data.split('\n');
+      let previousWasBlank = false; // Track if the previous line was blank
+      let firstLineProcessed = false; // Track if the first line has been processed
+
+      lines.forEach(line => {
+        if (line.trim() === '') {
+          previousWasBlank = true;
+          return;
+        }
+
+        const isComment = line.startsWith('#');
+        const cleanLine = line.replace(/^#/, '').trim();
+        const parts = cleanLine.split(/\s+/);
+
+        // Treat the first comment line as a section title
+        if (!firstLineProcessed && isComment) {
+          addSectionTitle(cleanLine);
+          firstLineProcessed = true;
+          previousWasBlank = false;
+        } else if (isComment && previousWasBlank) {
+          // If there is a blank line above, treat as a section title
+          addSectionTitle(cleanLine);
+          previousWasBlank = false;
+        } else if (isComment && parts.length >= 2) {
+          // It's a commented out entry that can be enabled/disabled
+          addRow(parts[0], parts.slice(1).join(' '), true);
+          previousWasBlank = false;
+        } else if (parts.length >= 2) {
+          // It's a normal entry
+          addRow(parts[0], parts.slice(1).join(' '), false);
+          previousWasBlank = false;
+        } else {
+          previousWasBlank = false; // Reset if the line is neither blank nor a section title
+        }
+      });
+    });
+
+    // Add a new row to the table (for normal and commented entries)
+    function addRow(ip = '', domain = '', isComment = false, index=-1) {
+      const table = document.getElementById('hosts-table').getElementsByTagName('tbody')[0];
+      const row = table.insertRow(index);
+
+      const enabledCell = row.insertCell(0);
+      const ipCell = row.insertCell(1);
+      const domainCell = row.insertCell(2);
+      const actionsCell = row.insertCell(3);
+
+      // Checkbox to enable/disable the entry
+      enabledCell.innerHTML = `<div class="input-group input-group-sm"><input class="form-check-input bg-dark" type="checkbox" ${isComment ? '' : 'checked'}></div>`;
+      ipCell.innerHTML = `<div class="input-group input-group-sm"><input class="form-control bg-dark" type="text" value="${ip}"}></div>`;
+      domainCell.innerHTML = `<div class="input-group input-group-sm"><input class="form-control bg-dark" type="text" value="${domain}"}></div>`;
+
+      actionsCell.innerHTML = `<button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteRow(this)">Delete</button>`;
+    }
+
+    // Add a new row below the section title
+    function addBelowSectionRow(button) {
+      const section = button.parentNode.parentNode;
+      const currentRow = section.closest('tr');
+      addRow('','',false,currentRow.rowIndex);
+    }
+
+    // Add a section title (cannot be enabled or disabled)
+    function addSectionTitle(title) {
+      const table = document.getElementById('hosts-table').getElementsByTagName('tbody')[0];
+      const row = table.insertRow();
+      row.className = 'section-title';
+
+      const sectionCell = row.insertCell(0);
+      sectionCell.colSpan = 3;
+      sectionCell.innerHTML = `<h4 contenteditable='true'> ${title} </h4>`;
+
+      const actionsCell = row.insertCell(1);
+      actionsCell.innerHTML = `<button type="button" class="btn btn-outline-success btn-sm" onclick="addBelowSectionRow(this)">Add Entry</button>
+      <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteRow(this)">Delete</button>`;
+    }
+
+    // Delete a row
+    function deleteRow(button) {
+      const row = button.parentNode.parentNode;
+      row.parentNode.removeChild(row);
+    }
+
+    // Delete a section
+    function deleteSection(button) {
+      const section = button.parentNode;
+      section.parentNode.removeChild(section);
+    }
+
+    // Add a new empty section
+    function createNewSection(){
+      addSectionTitle('New Section');
+    }
+
+    // Save changes
+    function saveChanges(){
+      const table = document.getElementById('hosts-table').getElementsByTagName('tbody')[0];
+      const rows = table.getElementsByTagName('tr');
+      let content = '';
+      let lastRowWasSectionTitle = false;  // Flag to track if last row was a section title
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+
+        if (row.className === 'section-title') {
+          if (content !== '') content += '\n'; // Ensure a blank line before a section title if it's not the first line
+          content += `#${row.cells[0].textContent}\n`;
+          lastRowWasSectionTitle = true;
+        } else {
+          const enabled = row.cells[0].getElementsByTagName('input')[0].checked;
+          const ip = row.cells[1].getElementsByTagName('input')[0].value.trim();
+          const domain = row.cells[2].getElementsByTagName('input')[0].value.trim();
+
+          if (ip !== '' && domain !== '') {
+            content += `${enabled ? '' : '#'}${ip} ${domain}\n`;
+          }
+          lastRowWasSectionTitle = false;
+        }
+      }
+
+      // Ensure there isn't an extra newline at the end
+      content = content.trimEnd();
+
+      ipcRenderer.send('save-hosts-file', content);
+    }
+
+    ipcRenderer.on('save-status', (event, status) => {
+      if (status.success) {
+        alert('Hosts file saved successfully!');
+      } else {
+        alert(`Error saving hosts file: ${status.message}`);
+      }
+    });
+  </script>
+
+  <!-- Bootstrap JS -->
+  <script src="assets/bootstrap/bootstrap.bundle.min.js"></script>
+</body>
+</html>

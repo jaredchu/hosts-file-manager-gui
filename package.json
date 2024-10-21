@@ -1,0 +1,45 @@
+{
+  "name": "hosts-file-manager-gui",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "debug": "NODE_ENV=development electron .",
+    "build": "electron-builder"
+  },
+  "build": {
+    "appId": "com.jaredchu.hosts-file-manager-gui",
+    "productName": "Hosts File Manager GUI",
+    "copyright": "© 2024 Jared Chu",
+    "files": [
+      "dist/**/*",
+      "main.js",
+      "preload.js",
+      "index.html",
+      "assets/**/*"
+    ],
+    "directories": {
+      "output": "release-builds"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ]
+    }
+  },
+  "keywords": [],
+  "author": {
+    "name": "Jared Chu",
+    "email": "me@jaredchu.com"
+  },
+  "homepage": "https://github.com/jaredchu/hosts-file-manager-gui",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "electron": "^33.0.1",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "sudo-prompt": "^9.2.1"
+  }
+}
