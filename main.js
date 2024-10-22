@@ -25,6 +25,7 @@ function createWindow() {
   }
 }
 
+app.disableHardwareAcceleration();
 app.whenReady().then(() => {
   fixFilePermission();
 
@@ -96,17 +97,13 @@ function fixFilePermission() {
   });
 }
 
-ipcMain.on('save-hosts-file', (event, content) => {
-  const options = { name: 'Hosts Manager' };
-  const command = `echo "${content.replace(/"/g, '\\"')}" | tee ${hostsFilePath}`;
-
-  exec(command, options, (error, stdout, stderr) => {
-    if (error) {
-      console.error('Error saving /etc/hosts:', error);
-      event.reply('save-status', { success: false, message: error.message });
-      return;
-    }
+ipcMain.on('save-hosts-file', async (event, content) => {
+  try {
+    await fs.promises.writeFile(hostsFilePath, content.replace(/"/g, '\\"'), 'utf-8');
     event.reply('save-status', { success: true });
     loadHostsFile();
-  });
+  } catch (error) {
+    console.error('Error saving /etc/hosts:', error);
+    event.reply('save-status', { success: false, message: error.message });
+  }
 });
