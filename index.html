@@ -177,6 +177,14 @@
         alert(`Error saving hosts file: ${status.message}`);
       }
     });
+
+    // Add Ctrl + S (Cmd + S on Mac) listener to trigger saveChanges
+    window.addEventListener('keydown', (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+        event.preventDefault(); // Prevent the default save dialog
+        saveChanges(); // Trigger the saveChanges function
+      }
+    });
   </script>
 
   <!-- Bootstrap JS -->
