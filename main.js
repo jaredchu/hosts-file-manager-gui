@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const sudo = require('sudo-prompt');
+const { exec } = require('child_process');
 
 let win;
 const hostsFilePath = '/etc/hosts';
@@ -25,6 +26,8 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  fixFilePermission();
+
   createWindow();
 
   win.webContents.on('did-finish-load', () => {
@@ -51,11 +54,53 @@ function loadHostsFile() {
   });
 }
 
+function fixFilePermission() {
+  // Ensure the hosts file has the right ownership and permissions
+  const currentUser = process.env.USER;
+  const options = { name: 'Hosts Manager' };
+
+  // Check if the file belongs to root:$USER
+  exec(`stat -c "%U:%G" ${hostsFilePath}`, (error, stdout) => {
+    if (error) {
+      console.error('Failed to get file ownership:', error);
+      return;
+    }
+    const ownership = stdout.trim();
+    if (ownership !== `root:${currentUser}`) {
+      // Change ownership to root:$USER if not already
+      sudo.exec(`chown root:${currentUser} ${hostsFilePath}`, options, (error, stdout, stderr) => {
+        if (error) {
+          console.error('Failed to change ownership:', error);
+          return;
+        }
+      });
+    }
+  });
+
+  // Check if the file has 664 permissions
+  exec(`stat -c "%a" ${hostsFilePath}`, (error, stdout) => {
+    if (error) {
+      console.error('Failed to get file permissions:', error);
+      return;
+    }
+    const permissions = stdout.trim();
+    if (permissions !== '664') {
+      // Change permissions to 664 if not already
+      sudo.exec(`chmod 664 ${hostsFilePath}`, options, (error, stdout, stderr) => {
+        if (error) {
+          console.error('Failed to change file permissions:', error);
+          return;
+        }
+      });
+    }
+  });
+}
+
 ipcMain.on('save-hosts-file', (event, content) => {
   const options = { name: 'Hosts Manager' };
-  const command = `echo "${content.replace(/"/g, '\\"')}" | sudo tee ${hostsFilePath}`;
+  const command = `echo "${content.replace(/"/g, '\\"')}" | tee ${hostsFilePath}`;
 
-  sudo.exec(command, options, (error, stdout, stderr) => {
+  exec(command, options, (error, stdout, stderr) => {
     if (error) {
       console.error('Error saving /etc/hosts:', error);
       event.reply('save-status', { success: false, message: error.message });
